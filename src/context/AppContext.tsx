@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User, Challenge, UserProgress, Contest, ContestAttempt, Event, ForumTopic, ForumReply } from '../types';
+import DataManager from '../utils/dataManager';
 
 interface AppContextType {
   currentUser: User | null;
@@ -12,7 +13,7 @@ interface AppContextType {
   forumTopics: ForumTopic[];
   currentPage: string;
   login: (email: string, password: string) => boolean;
-  register: (username: string, email: string, password: string) => boolean;
+  register: (username: string, email: string, password: string, studentId?: string) => boolean;
   logout: () => void;
   setCurrentPage: (page: string) => void;
   submitAnswer: (challengeId: string, answer: string) => boolean;
@@ -28,6 +29,8 @@ interface AppContextType {
   addChallengeToContest: (contestId: string, challenge: Omit<Challenge, 'id' | 'contestId'>) => boolean;
   updateContest: (contestId: string, updates: Partial<Contest>) => boolean;
   deleteContest: (contestId: string) => boolean;
+  updateChallenge: (challengeId: string, updates: Partial<Challenge>) => boolean;
+  deleteChallenge: (challengeId: string) => boolean;
   updateUserProfile: (userId: string, updates: Partial<User>) => boolean;
   changePassword: (userId: string, currentPassword: string, newPassword: string) => boolean;
   createEvent: (event: Omit<Event, 'id' | 'author' | 'authorName' | 'createdAt' | 'updatedAt'>) => boolean;
@@ -36,197 +39,47 @@ interface AppContextType {
   createForumTopic: (topic: Omit<ForumTopic, 'id' | 'author' | 'authorName' | 'createdAt' | 'updatedAt' | 'replies' | 'isPinned'>) => boolean;
   replyToTopic: (topicId: string, content: string) => boolean;
   pinTopic: (topicId: string) => boolean;
+  exportData: () => string;
+  importData: (jsonData: string) => boolean;
+  resetData: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Mock data
-const mockChallenges: Challenge[] = [
-  {
-    id: '1',
-    question: 'AI là viết tắt của từ gì?',
-    type: 'multiple-choice',
-    options: ['Artificial Intelligence', 'Automated Intelligence', 'Advanced Intelligence', 'Applied Intelligence'],
-    correctAnswer: 'Artificial Intelligence',
-    points: 10,
-    difficulty: 'easy',
-    contestId: 'contest1'
-  },
-  {
-    id: '2',
-    question: 'Thuật toán nào thường được sử dụng cho nhận dạng hình ảnh?',
-    type: 'multiple-choice',
-    options: ['Linear Regression', 'Convolutional Neural Network', 'Decision Tree', 'K-Means'],
-    correctAnswer: 'Convolutional Neural Network',
-    points: 20,
-    difficulty: 'medium',
-    contestId: 'contest1'
-  },
-  {
-    id: '3',
-    question: 'Giải thích khái niệm overfitting trong machine learning.',
-    type: 'text',
-    correctAnswer: 'overfitting',
-    points: 30,
-    difficulty: 'hard',
-    contestId: 'contest1'
-  },
-  {
-    id: '4',
-    question: 'Python được sử dụng phổ biến trong AI vì lý do gì?',
-    type: 'multiple-choice',
-    options: ['Dễ học và sử dụng', 'Có nhiều thư viện AI', 'Cộng đồng lớn', 'Tất cả các lý do trên'],
-    correctAnswer: 'Tất cả các lý do trên',
-    points: 15,
-    difficulty: 'easy',
-    contestId: 'contest2'
-  },
-  {
-    id: '5',
-    question: 'TensorFlow là gì?',
-    type: 'text',
-    correctAnswer: 'framework',
-    points: 25,
-    difficulty: 'medium',
-    contestId: 'contest2'
-  }
-];
-
-const mockContests: Contest[] = [
-  {
-    id: 'contest1',
-    title: 'Kiến thức AI cơ bản',
-    description: 'Cuộc thi kiểm tra kiến thức cơ bản về trí tuệ nhân tạo và machine learning',
-    challenges: mockChallenges.filter(c => c.contestId === 'contest1'),
-    timeLimit: 30,
-    startDate: '2024-01-01',
-    endDate: '2024-12-31',
-    isActive: true,
-    maxAttempts: 3,
-    createdBy: 'admin',
-    isPublic: true
-  },
-  {
-    id: 'contest2',
-    title: 'Python cho AI',
-    description: 'Thử thách về việc sử dụng Python trong các dự án AI',
-    challenges: mockChallenges.filter(c => c.contestId === 'contest2'),
-    timeLimit: 20,
-    startDate: '2024-01-01',
-    endDate: '2024-12-31',
-    isActive: true,
-    maxAttempts: 2,
-    createdBy: 'admin',
-    isPublic: true
-  }
-];
-
-const initialUsers: User[] = [
-  {
-    id: '1',
-    username: 'AIExplorer',
-    email: 'explorer@vaic.com',
-    password: 'explorer123',
-    score: 150,
-    joinDate: '2024-01-15',
-    role: 'user',
-    studentId: 'SV001'
-  },
-  {
-    id: '2',
-    username: 'TechWizard',
-    email: 'wizard@vaic.com',
-    password: 'wizard456',
-    score: 120,
-    joinDate: '2024-01-20',
-    role: 'user',
-    studentId: 'SV002'
-  },
-  {
-    id: '3',
-    username: 'DataMaster',
-    email: 'master@vaic.com',
-    password: 'master789',
-    score: 180,
-    joinDate: '2024-01-10',
-    role: 'user',
-    studentId: 'SV003'
-  },
-  {
-    id: 'admin',
-    username: 'Admin',
-    email: 'admin@vaic.com',
-    password: 'admin2024',
-    score: 999,
-    joinDate: '2024-01-01',
-    role: 'admin'
-  }
-];
-
-const mockEvents: Event[] = [
-  {
-    id: '1',
-    title: 'Workshop: Giới thiệu về Machine Learning',
-    content: 'Tham gia workshop miễn phí về Machine Learning dành cho người mới bắt đầu. Chúng ta sẽ cùng nhau khám phá:\n\n• Khái niệm cơ bản về ML\n• Các thuật toán phổ biến\n• Thực hành với Python\n• Q&A với chuyên gia\n\nThời gian: 14:00 - 17:00, Thứ 7 tuần tới\nĐịa điểm: Phòng hội thảo A1, Tòa nhà VAIC\n\nĐăng ký ngay để không bỏ lỡ cơ hội học hỏi!',
-    author: 'admin',
-    authorName: 'Admin',
-    createdAt: '2024-01-20T10:00:00Z',
-    updatedAt: '2024-01-20T10:00:00Z',
-    isPublished: true,
-    tags: ['workshop', 'machine learning', 'beginner']
-  }
-];
-
-const mockForumTopics: ForumTopic[] = [
-  {
-    id: '1',
-    title: 'Thảo luận về tương lai của AI trong giáo dục',
-    content: 'AI đang thay đổi cách chúng ta học và dạy. Các bạn nghĩ sao về việc ứng dụng AI trong giáo dục? Những lợi ích và thách thức là gì?',
-    author: '1',
-    authorName: 'AIExplorer',
-    createdAt: '2024-01-18T09:00:00Z',
-    updatedAt: '2024-01-18T09:00:00Z',
-    replies: [
-      {
-        id: '1',
-        content: 'Tôi nghĩ AI sẽ giúp cá nhân hóa việc học tập và làm cho giáo dục trở nên hiệu quả hơn. Tuy nhiên, chúng ta cũng cần cân nhắc về tính tương tác con người.',
-        author: '2',
-        authorName: 'TechWizard',
-        createdAt: '2024-01-18T10:30:00Z',
-        topicId: '1'
-      }
-    ],
-    tags: ['AI', 'education', 'future'],
-    isPinned: true
-  }
-];
-
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>(() => {
-    const savedUsers = localStorage.getItem('vaic_users');
-    return savedUsers ? JSON.parse(savedUsers) : initialUsers;
-  });
-  const [challenges, setChallenges] = useState<Challenge[]>(mockChallenges);
-  const [contests, setContests] = useState<Contest[]>(mockContests);
+  const [currentPage, setCurrentPage] = useState('home');
+  const dataManager = DataManager.getInstance();
+
+  // State derived from DataManager
+  const [users, setUsers] = useState<User[]>([]);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [contests, setContests] = useState<Contest[]>([]);
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
   const [contestAttempts, setContestAttempts] = useState<ContestAttempt[]>([]);
-  const [events, setEvents] = useState<Event[]>(mockEvents);
-  const [forumTopics, setForumTopics] = useState<ForumTopic[]>(mockForumTopics);
-  const [currentPage, setCurrentPage] = useState('home');
+  const [events, setEvents] = useState<Event[]>([]);
+  const [forumTopics, setForumTopics] = useState<ForumTopic[]>([]);
 
-  // Load saved data on mount
+  // Load data on mount
   useEffect(() => {
+    loadAllData();
+    
+    // Load current user from localStorage
     const savedUser = localStorage.getItem('vaic_currentUser');
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
     }
   }, []);
 
-  // Save users to localStorage whenever users array changes
-  useEffect(() => {
-    localStorage.setItem('vaic_users', JSON.stringify(users));
-  }, [users]);
+  const loadAllData = () => {
+    setUsers(dataManager.getUsers());
+    setChallenges(dataManager.getChallenges());
+    setContests(dataManager.getContests());
+    setUserProgress(dataManager.getUserProgress());
+    setContestAttempts(dataManager.getContestAttempts());
+    setEvents(dataManager.getEvents());
+    setForumTopics(dataManager.getForumTopics());
+  };
 
   const login = (email: string, password: string): boolean => {
     const user = users.find(u => u.email === email);
@@ -238,7 +91,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return false;
   };
 
-  const register = (username: string, email: string, password: string): boolean => {
+  const register = (username: string, email: string, password: string, studentId?: string): boolean => {
     if (users.find(u => u.email === email)) {
       return false;
     }
@@ -250,11 +103,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       password,
       score: 0,
       joinDate: new Date().toISOString().split('T')[0],
-      role: 'user'
+      role: 'user',
+      studentId: studentId || undefined
     };
     
-    const updatedUsers = [...users, newUser];
-    setUsers(updatedUsers);
+    dataManager.addUser(newUser);
+    setUsers(dataManager.getUsers());
     setCurrentUser(newUser);
     localStorage.setItem('vaic_currentUser', JSON.stringify(newUser));
     return true;
@@ -267,8 +121,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateUserProfile = (userId: string, updates: Partial<User>): boolean => {
-    const updatedUsers = users.map(u => u.id === userId ? { ...u, ...updates } : u);
-    setUsers(updatedUsers);
+    dataManager.updateUser(userId, updates);
+    setUsers(dataManager.getUsers());
     
     if (currentUser && currentUser.id === userId) {
       const updatedUser = { ...currentUser, ...updates };
@@ -284,10 +138,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return false;
     }
     
-    const updatedUsers = users.map(u => 
-      u.id === userId ? { ...u, password: newPassword } : u
-    );
-    setUsers(updatedUsers);
+    dataManager.updateUser(userId, { password: newPassword });
+    setUsers(dataManager.getUsers());
     
     if (currentUser && currentUser.id === userId) {
       const updatedUser = { ...currentUser, password: newPassword };
@@ -310,7 +162,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (isCorrect) {
       const updatedUser = { ...currentUser, score: currentUser.score + challenge.points };
       setCurrentUser(updatedUser);
-      setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+      dataManager.updateUser(currentUser.id, { score: updatedUser.score });
+      setUsers(dataManager.getUsers());
       localStorage.setItem('vaic_currentUser', JSON.stringify(updatedUser));
       
       const progress: UserProgress = {
@@ -320,7 +173,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         score: challenge.points,
         completedAt: new Date().toISOString()
       };
-      setUserProgress(prev => [...prev, progress]);
+      dataManager.addUserProgress(progress);
+      setUserProgress(dataManager.getUserProgress());
     }
     
     return isCorrect;
@@ -349,7 +203,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       speedBonus: 0
     };
     
-    setContestAttempts(prev => [...prev, attempt]);
+    dataManager.addContestAttempt(attempt);
+    setContestAttempts(dataManager.getContestAttempts());
     return attempt;
   };
 
@@ -370,7 +225,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       score: attempt.score + (isCorrect ? challenge.points : 0)
     };
     
-    setContestAttempts(prev => prev.map(a => a.id === attemptId ? updatedAttempt : a));
+    dataManager.updateContestAttempt(attemptId, updatedAttempt);
+    setContestAttempts(dataManager.getContestAttempts());
     return isCorrect;
   };
 
@@ -404,12 +260,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       isCompleted: true
     };
     
-    setContestAttempts(prev => prev.map(a => a.id === attemptId ? updatedAttempt : a));
+    dataManager.updateContestAttempt(attemptId, updatedAttempt);
+    setContestAttempts(dataManager.getContestAttempts());
     
     // Update user total score
     const updatedUser = { ...currentUser, score: currentUser.score + finalScore };
     setCurrentUser(updatedUser);
-    setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+    dataManager.updateUser(currentUser.id, { score: updatedUser.score });
+    setUsers(dataManager.getUsers());
     localStorage.setItem('vaic_currentUser', JSON.stringify(updatedUser));
   };
 
@@ -436,7 +294,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       challenges: []
     };
     
-    setContests(prev => [...prev, newContest]);
+    dataManager.addContest(newContest);
+    setContests(dataManager.getContests());
     return true;
   };
 
@@ -449,29 +308,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       contestId
     };
     
-    setChallenges(prev => [...prev, newChallenge]);
-    setContests(prev => prev.map(c => 
-      c.id === contestId 
-        ? { ...c, challenges: [...c.challenges, newChallenge] }
-        : c
-    ));
+    dataManager.addChallenge(newChallenge);
+    setChallenges(dataManager.getChallenges());
+    setContests(dataManager.getContests());
     return true;
   };
 
   const updateContest = (contestId: string, updates: Partial<Contest>): boolean => {
     if (!currentUser || currentUser.role !== 'admin') return false;
     
-    setContests(prev => prev.map(c => 
-      c.id === contestId ? { ...c, ...updates } : c
-    ));
+    dataManager.updateContest(contestId, updates);
+    setContests(dataManager.getContests());
     return true;
   };
 
   const deleteContest = (contestId: string): boolean => {
     if (!currentUser || currentUser.role !== 'admin') return false;
     
-    setContests(prev => prev.filter(c => c.id !== contestId));
-    setChallenges(prev => prev.filter(c => c.contestId !== contestId));
+    dataManager.deleteContest(contestId);
+    setContests(dataManager.getContests());
+    setChallenges(dataManager.getChallenges());
+    return true;
+  };
+
+  const updateChallenge = (challengeId: string, updates: Partial<Challenge>): boolean => {
+    if (!currentUser || currentUser.role !== 'admin') return false;
+    
+    dataManager.updateChallenge(challengeId, updates);
+    setChallenges(dataManager.getChallenges());
+    setContests(dataManager.getContests());
+    return true;
+  };
+
+  const deleteChallenge = (challengeId: string): boolean => {
+    if (!currentUser || currentUser.role !== 'admin') return false;
+    
+    dataManager.deleteChallenge(challengeId);
+    setChallenges(dataManager.getChallenges());
+    setContests(dataManager.getContests());
     return true;
   };
 
@@ -523,25 +397,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updatedAt: new Date().toISOString()
     };
     
-    setEvents(prev => [...prev, newEvent]);
+    dataManager.addEvent(newEvent);
+    setEvents(dataManager.getEvents());
     return true;
   };
 
   const updateEvent = (eventId: string, updates: Partial<Event>): boolean => {
     if (!currentUser || currentUser.role !== 'admin') return false;
     
-    setEvents(prev => prev.map(e => 
-      e.id === eventId 
-        ? { ...e, ...updates, updatedAt: new Date().toISOString() }
-        : e
-    ));
+    const eventUpdates = { ...updates, updatedAt: new Date().toISOString() };
+    dataManager.updateEvent(eventId, eventUpdates);
+    setEvents(dataManager.getEvents());
     return true;
   };
 
   const deleteEvent = (eventId: string): boolean => {
     if (!currentUser || currentUser.role !== 'admin') return false;
     
-    setEvents(prev => prev.filter(e => e.id !== eventId));
+    dataManager.deleteEvent(eventId);
+    setEvents(dataManager.getEvents());
     return true;
   };
 
@@ -559,7 +433,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       isPinned: false
     };
     
-    setForumTopics(prev => [...prev, newTopic]);
+    dataManager.addForumTopic(newTopic);
+    setForumTopics(dataManager.getForumTopics());
     return true;
   };
 
@@ -575,25 +450,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       topicId
     };
     
-    setForumTopics(prev => prev.map(t => 
-      t.id === topicId 
-        ? { 
-            ...t, 
-            replies: [...t.replies, newReply],
-            updatedAt: new Date().toISOString()
-          }
-        : t
-    ));
+    const topic = forumTopics.find(t => t.id === topicId);
+    if (topic) {
+      const updatedTopic = {
+        ...topic,
+        replies: [...topic.replies, newReply],
+        updatedAt: new Date().toISOString()
+      };
+      
+      dataManager.updateForumTopic(topicId, updatedTopic);
+      setForumTopics(dataManager.getForumTopics());
+    }
     return true;
   };
 
   const pinTopic = (topicId: string): boolean => {
     if (!currentUser || currentUser.role !== 'admin') return false;
     
-    setForumTopics(prev => prev.map(t => 
-      t.id === topicId ? { ...t, isPinned: !t.isPinned } : t
-    ));
+    const topic = forumTopics.find(t => t.id === topicId);
+    if (topic) {
+      dataManager.updateForumTopic(topicId, { isPinned: !topic.isPinned });
+      setForumTopics(dataManager.getForumTopics());
+    }
     return true;
+  };
+
+  const exportData = (): string => {
+    return dataManager.exportData();
+  };
+
+  const importData = (jsonData: string): boolean => {
+    const success = dataManager.importData(jsonData);
+    if (success) {
+      loadAllData();
+    }
+    return success;
+  };
+
+  const resetData = (): void => {
+    dataManager.resetData();
+    loadAllData();
+    setCurrentUser(null);
+    localStorage.removeItem('vaic_currentUser');
   };
 
   return (
@@ -624,6 +522,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       addChallengeToContest,
       updateContest,
       deleteContest,
+      updateChallenge,
+      deleteChallenge,
       updateUserProfile,
       changePassword,
       createEvent,
@@ -631,7 +531,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       deleteEvent,
       createForumTopic,
       replyToTopic,
-      pinTopic
+      pinTopic,
+      exportData,
+      importData,
+      resetData
     }}>
       {children}
     </AppContext.Provider>

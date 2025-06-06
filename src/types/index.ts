@@ -90,3 +90,14 @@ export interface ForumReply {
   createdAt: string;
   topicId: string;
 }
+
+export interface DataStore {
+  users: User[];
+  contests: Contest[];
+  challenges: Challenge[];
+  contestAttempts: ContestAttempt[];
+  userProgress: UserProgress[];
+  events: Event[];
+  forumTopics: ForumTopic[];
+  lastUpdated: string;
+}
